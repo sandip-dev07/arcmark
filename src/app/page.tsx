@@ -1,3 +1,4 @@
+import AppLogo from "@/components/app-logo";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Bookmark, Star } from "lucide-react";
 import Image from "next/image";
@@ -5,28 +6,21 @@ import Link from "next/link";
 
 export default function Home() {
   const browsers = [
-    { src: "/chrome.png", alt: "Google Chrome" },
-    { src: "/safari.png", alt: "Safari" },
-    { src: "/edge.png", alt: "Microsoft Edge" },
-    { src: "/firefox.png", alt: "Firefox" },
-    { src: "/opera.png", alt: "Opera" },
+    { src: "/chrome.webp", alt: "Google Chrome" },
+    { src: "/safari.webp", alt: "Safari" },
+    { src: "/edge.webp", alt: "Microsoft Edge" },
+    { src: "/firefox.webp", alt: "Firefox" },
+    { src: "/opera.webp", alt: "Opera" },
   ];
 
   return (
     <main className="relative h-full w-full">
-      <div className="absolute inset-x-0 top-0 -z-10 h-176 bg-[radial-gradient(circle_at_top,rgba(187,211,255,0.7),transparent_52%)]" />
+      <div className="absolute inset-x-0 top-0 -z-10 h-176 bg-[radial-gradient(circle_at_top,rgba(187,211,255,0.7),transparent_60%)]" />
 
       {/* navbar */}
       <header className="mx-auto mt-4 w-full max-w-6xl px-4 sm:px-6">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            <div>
-              <Image src={"/logo.svg"} width={24} height={24} alt="" />
-            </div>
-            <h1 className="text-xl font-semibold sm:text-2xl">
-              Arc<span className="font-normal">Mark</span>
-            </h1>
-          </div>
+          <AppLogo />
           <div className="flex items-center gap-1.5 sm:w-auto">
             <Button
               variant={"outline"}
@@ -61,7 +55,7 @@ export default function Home() {
             </p>
 
             <div className="mt-8 flex flex-col justify-center gap-3 sm:mt-10 sm:flex-row items-center">
-              <Button asChild size="lg" className="gap-2 w-fit rounded-xl">
+              <Button asChild size="lg" className="gap-2 w-fit">
                 <Link href="/bookmarks">
                   Open your vault
                   <ArrowRight className="h-4 w-4" />
@@ -70,7 +64,7 @@ export default function Home() {
             </div>
 
             <div className="mt-8 flex justify-center">
-              <div className="flex max-w-full flex-col items-center justify-center gap-3 rounded-xl border border-sky-100 bg-sky-50 p-1.5 px-2.5 sm:flex-row sm:rounded-full">
+              <div className="flex max-w-full flex-col items-center justify-center gap-3 rounded-xl border border-sky-100 bg-sky-50 p-1 px-1.5 pl-2.5 sm:flex-row sm:rounded-full">
                 <span className="text-center text-sm font-medium text-muted-foreground sm:text-left">
                   Seamless experience across browsers
                 </span>
