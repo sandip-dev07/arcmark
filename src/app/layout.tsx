@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
 import Provider from "./provider";
 
@@ -18,6 +19,21 @@ const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
 });
 
+const hankenGrotesk = Hanken_Grotesk({
+  subsets: ["latin"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  variable: "--font-hanken-grotesk",
+  display: "swap",
+  preload: true,
+  fallback: [
+    "system-ui",
+    "-apple-system",
+    "BlinkMacSystemFont",
+    "Segoe UI",
+    "sans-serif",
+  ],
+});
+
 export const metadata: Metadata = {
   icons: "/logo.svg",
   title: "ArcMark - Bookmark Manager",
@@ -34,7 +50,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full`}
+      className={`${hankenGrotesk.variable} h-full`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <Provider>{children}</Provider>
