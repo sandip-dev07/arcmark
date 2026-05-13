@@ -1,8 +1,9 @@
 import AppLogo from "@/components/app-logo";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Bookmark, Star } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { IoLogoGithub } from "react-icons/io";
 
 export default function Home() {
   const browsers = [
@@ -22,6 +23,9 @@ export default function Home() {
         <div className="flex items-center justify-between gap-3">
           <AppLogo />
           <div className="flex items-center gap-1.5 sm:w-auto">
+            <Button variant={"ghost"} asChild className="flex-1 sm:flex-none hover:bg-transparent">
+              <Link target="_blank" href="https://github.com/sandip-dev07/arcmark"><IoLogoGithub /></Link>
+            </Button>
             <Button
               variant={"outline"}
               asChild
