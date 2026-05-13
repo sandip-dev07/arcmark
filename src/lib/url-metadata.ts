@@ -1,14 +1,31 @@
-import ogs from 'open-graph-scraper'
+import "server-only";
 
-export function URLIcon(url: string) {
+import ogs from "open-graph-scraper";
+
+export const getUrlMetadataTitle = async (url: string) => {
   try {
-    const u = new URL(url);
-    return `https://www.google.com/s2/favicons?domain=${u.hostname}&sz=64`;
-  } catch {
-    return null;
-  }
-}
+    const { result } = await ogs({
+      url,
+      onlyGetOpenGraphInfo: false,
+      timeout: 10_000,
+    });
+    const metadata = result as typeof result & { title?: string };
 
-export function URLTitle(){
-  
-}
+    const title =
+      metadata.ogTitle?.trim() ||
+      metadata.twitterTitle?.trim() ||
+      metadata.dcTitle?.trim() ||
+      metadata.title?.trim() ||
+      "";
+
+    return {
+      ok: Boolean(title),
+      title,
+    };
+  } catch {
+    return {
+      ok: false,
+      title: "",
+    };
+  }
+};

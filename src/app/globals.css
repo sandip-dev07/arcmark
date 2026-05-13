@@ -123,9 +123,7 @@
   }
   html {
     @apply scroll-smooth;
-    overflow-y: scroll;
-    scrollbar-width: thin;
-    scrollbar-color: #a1a1aa transparent;
+    overflow-x: hidden !important;
   }
   body {
     @apply bg-background text-foreground;

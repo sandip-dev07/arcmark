@@ -70,8 +70,8 @@ export default function UserProfileMenu({
           {avatarUrl ? (
             <img
               src={avatarUrl}
-              alt={displayName}
-              className="h-8 w-8 rounded-lg object-cover"
+              alt={displayName.slice(0, 1)}
+              className="h-8 w-8 rounded-lg object-cover bg-secondary uppercase flex items-center justify-center"
             />
           ) : (
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-sky-100 text-xs font-semibold text-sky-900">

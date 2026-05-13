@@ -1,7 +1,7 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { useRef, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronsUpDown,
   Loader2,
@@ -41,35 +41,67 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  createBookmark,
+  deleteTag,
+  updateBookmark,
+} from "@/lib/supabase/query";
+import { publishBookmarksSync } from "@/lib/bookmarks-sync";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import type { BookmarkRow, TagRow } from "@/types";
 
 const bookmarkSchema = z.object({
   url: z.string().url("Enter a valid URL."),
   title: z.string().trim().min(1, "Title is required.").max(200),
-  tags: z.array(z.string().trim().min(1)).max(10),
+  tags: z.array(z.string().trim().min(3).max(20)).max(3),
 });
+
+const MAX_TAGS_PER_BOOKMARK = 3;
+
+type BookmarkFormValues = z.infer<typeof bookmarkSchema>;
+type BookmarkFormErrors = Partial<Record<keyof BookmarkFormValues, string>>;
 
 type TagOption = {
   id: string;
   name: string;
+  isLocal?: boolean;
 };
 
-const defaultTags: TagOption[] = [
-  { id: "design", name: "design" },
-  { id: "tools", name: "tools" },
-  { id: "reading", name: "reading" },
-];
+type BookmarkFormProps = {
+  availableTags?: TagRow[];
+  bookmark?: BookmarkRow;
+  trigger?: ReactNode;
+};
 
-export default function BookmarkForm() {
+export default function BookmarkForm({
+  availableTags: initialAvailableTags = [],
+  bookmark,
+  trigger,
+}: BookmarkFormProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [prefetchingTitle, setPrefetchingTitle] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
-  const [url, setUrl] = useState("");
-  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState(bookmark?.url ?? "");
+  const [title, setTitle] = useState(bookmark?.title ?? "");
+  const [lastPrefetchedUrl, setLastPrefetchedUrl] = useState<string | null>(
+    bookmark?.url ?? null
+  );
   const [tagInput, setTagInput] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [availableTags, setAvailableTags] = useState<TagOption[]>(defaultTags);
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    bookmark?.tags ?? []
+  );
+  const [errors, setErrors] = useState<BookmarkFormErrors>({});
+  const [availableTags, setAvailableTags] = useState<TagOption[]>(
+    initialAvailableTags.map((tag) => ({
+      id: tag.id,
+      name: tag.name,
+    }))
+  );
   const inputRef = useRef<HTMLInputElement>(null);
+  const isEditing = Boolean(bookmark);
 
   const normalizedInput = tagInput.trim().toLowerCase();
   const filteredOptions = availableTags.filter((tag) =>
@@ -78,15 +110,95 @@ export default function BookmarkForm() {
   const canCreate =
     normalizedInput.length > 0 &&
     !availableTags.some((tag) => tag.name.toLowerCase() === normalizedInput) &&
-    selectedTags.length < 10;
+    selectedTags.length < MAX_TAGS_PER_BOOKMARK;
 
   const resetForm = () => {
-    setUrl("");
-    setTitle("");
+    setUrl(bookmark?.url ?? "");
+    setTitle(bookmark?.title ?? "");
+    setLastPrefetchedUrl(bookmark?.url ?? null);
     setTagInput("");
-    setSelectedTags([]);
+    setSelectedTags(bookmark?.tags ?? []);
+    setErrors({});
     setTagPickerOpen(false);
   };
+
+  const getFormValues = (): BookmarkFormValues => ({
+    url,
+    title,
+    tags: selectedTags,
+  });
+
+  const validateForm = () => {
+    const result = bookmarkSchema.safeParse(getFormValues());
+
+    if (result.success) {
+      setErrors({});
+      return result;
+    }
+
+    const fieldErrors = result.error.flatten().fieldErrors;
+    setErrors({
+      url: fieldErrors.url?.[0],
+      title: fieldErrors.title?.[0],
+      tags: fieldErrors.tags?.[0],
+    });
+
+    return result;
+  };
+
+  useEffect(() => {
+    const normalizedUrl = url.trim();
+
+    if (
+      !open ||
+      !normalizedUrl ||
+      isEditing ||
+      normalizedUrl === lastPrefetchedUrl
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    try {
+      new URL(normalizedUrl);
+    } catch {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      setPrefetchingTitle(true);
+
+      try {
+        const response = await fetch(
+          `/api/url-metadata?url=${encodeURIComponent(normalizedUrl)}`
+        );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as {
+          ok?: boolean;
+          title?: string;
+        };
+
+        if (!cancelled && data.ok && data.title) {
+          setTitle(data.title);
+          setLastPrefetchedUrl(normalizedUrl);
+        }
+      } finally {
+        if (!cancelled) {
+          setPrefetchingTitle(false);
+        }
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [isEditing, lastPrefetchedUrl, open, url]);
 
   const addTag = (tagName: string) => {
     const normalizedTag = tagName.trim().toLowerCase();
@@ -100,16 +212,27 @@ export default function BookmarkForm() {
       return;
     }
 
-    if (selectedTags.length >= 10) {
-      toast.error("You can select up to 10 tags.");
+    if (selectedTags.length >= MAX_TAGS_PER_BOOKMARK) {
+      setErrors({
+        ...errors,
+        tags: `You can select up to ${MAX_TAGS_PER_BOOKMARK} tags.`,
+      });
       return;
     }
 
     setSelectedTags((current) => [...current, normalizedTag]);
+    setErrors((current) => ({ ...current, tags: undefined }));
     setAvailableTags((current) =>
       current.some((tag) => tag.name.toLowerCase() === normalizedTag)
         ? current
-        : [...current, { id: normalizedTag, name: normalizedTag }]
+        : [
+            ...current,
+            {
+              id: `local:${normalizedTag}`,
+              name: normalizedTag,
+              isLocal: true,
+            },
+          ]
     );
     setTagInput("");
     inputRef.current?.focus();
@@ -117,39 +240,68 @@ export default function BookmarkForm() {
 
   const removeSelected = (tagName: string) => {
     setSelectedTags((current) => current.filter((tag) => tag !== tagName));
+    setErrors((current) => ({ ...current, tags: undefined }));
   };
 
-  const deleteFromLibrary = (tagToDelete: TagOption) => {
+  const deleteFromLibrary = async (tagToDelete: TagOption) => {
+    if (tagToDelete.isLocal) {
+      setAvailableTags((current) =>
+        current.filter((tag) => tag.id !== tagToDelete.id)
+      );
+      setSelectedTags((current) =>
+        current.filter((tag) => tag !== tagToDelete.name)
+      );
+      setErrors((current) => ({ ...current, tags: undefined }));
+      return;
+    }
+
+    const response = await deleteTag(tagToDelete.id);
+
+    if (!response.ok) {
+      toast.error(response.error);
+      return;
+    }
+
     setAvailableTags((current) =>
       current.filter((tag) => tag.id !== tagToDelete.id)
     );
     setSelectedTags((current) =>
       current.filter((tag) => tag !== tagToDelete.name)
     );
+    setErrors((current) => ({ ...current, tags: undefined }));
+    publishBookmarksSync();
     toast.success(`Deleted tag "${tagToDelete.name}".`);
+    router.refresh();
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const result = bookmarkSchema.safeParse({
-      url,
-      title,
-      tags: selectedTags,
-    });
+    const result = validateForm();
 
     if (!result.success) {
-      toast.error(result.error.issues[0]?.message ?? "Invalid form values.");
       return;
     }
 
     setSubmitting(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      toast.success("Bookmark details captured.");
+      const response = isEditing
+        ? await updateBookmark(bookmark!.id, result.data)
+        : await createBookmark(result.data);
+
+      if (!response.ok) {
+        toast.error(response.error);
+        return;
+      }
+
+      toast.success(
+        isEditing ? "Bookmark updated successfully." : "Bookmark saved successfully."
+      );
+      publishBookmarksSync();
       resetForm();
       setOpen(false);
+      router.refresh();
     } finally {
       setSubmitting(false);
     }
@@ -158,17 +310,23 @@ export default function BookmarkForm() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" className="w-fit">
-          <Plus />
-          Add
-        </Button>
+        {trigger ?? (
+          <Button size="lg" className="w-fit">
+            <Plus />
+            Add
+          </Button>
+        )}
       </DialogTrigger>
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-xl">Save a link</DialogTitle>
+          <DialogTitle className="text-xl">
+            {isEditing ? "Edit link" : "Save a link"}
+          </DialogTitle>
           <DialogDescription>
-            Add the URL, title, and tags for your bookmark.
+            {isEditing
+              ? "Update the URL, title, and tags for your bookmark."
+              : "Add the URL, title, and tags for your bookmark."}
           </DialogDescription>
         </DialogHeader>
 
@@ -177,25 +335,57 @@ export default function BookmarkForm() {
             <Label htmlFor="url">URL</Label>
             <Input
               id="url"
+              name="bookmark-url"
               type="url"
               placeholder="https://example.com"
               value={url}
-              onChange={(event) => setUrl(event.target.value)}
+              onChange={(event) => {
+                setUrl(event.target.value);
+                setLastPrefetchedUrl(null);
+                setErrors((current) => ({ ...current, url: undefined }));
+              }}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-invalid={Boolean(errors.url)}
               required
               autoFocus
             />
+            {errors.url ? (
+              <p className="text-xs text-destructive">{errors.url}</p>
+            ) : null}
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="title">Title</Label>
-            <Input
-              id="title"
-              placeholder="What to call it"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-              maxLength={200}
-            />
+            <div className="relative">
+              <Input
+                id="title"
+                name="bookmark-title"
+                placeholder="What to call it"
+                value={title}
+                onChange={(event) => {
+                  setTitle(event.target.value);
+                  setErrors((current) => ({ ...current, title: undefined }));
+                }}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                required
+                maxLength={200}
+                aria-invalid={Boolean(errors.title)}
+                className={prefetchingTitle ? "pr-9" : undefined}
+              />
+              {!isEditing && prefetchingTitle ? (
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </div>
+              ) : null}
+            </div>
+            {errors.title ? (
+              <p className="text-xs text-destructive">{errors.title}</p>
+            ) : null}
           </div>
 
           <div className="space-y-1.5">
@@ -208,6 +398,7 @@ export default function BookmarkForm() {
                     variant="outline"
                     role="combobox"
                     aria-expanded={tagPickerOpen}
+                    aria-invalid={Boolean(errors.tags)}
                     className="w-full justify-between font-normal"
                   >
                     <span className="text-muted-foreground">
@@ -271,7 +462,7 @@ export default function BookmarkForm() {
                         <button
                           type="button"
                           onClick={() => addTag(tag.name)}
-                          className="inline-flex flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm"
+                          className="inline-flex flex-1 items-center gap-2 px-1.5 py-1.5 text-left text-sm"
                         >
                           <Tag className="h-3.5 w-3.5 text-muted-foreground" />
                           {tag.name}
@@ -301,7 +492,7 @@ export default function BookmarkForm() {
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => deleteFromLibrary(tag)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                variant={"destructive"}
                               >
                                 Delete tag
                               </AlertDialogAction>
@@ -313,10 +504,14 @@ export default function BookmarkForm() {
                   </div>
 
                   <div className="border-t px-2 py-1.5 text-[11px] text-muted-foreground">
-                    {selectedTags.length}/10 selected | Enter to add
+                    {selectedTags.length}/{MAX_TAGS_PER_BOOKMARK} selected |
+                    Enter to add
                   </div>
                 </PopoverContent>
               </Popover>
+              {errors.tags ? (
+                <p className="text-xs text-destructive">{errors.tags}</p>
+              ) : null}
 
               {selectedTags.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
@@ -324,7 +519,7 @@ export default function BookmarkForm() {
                     <Badge
                       key={tag}
                       variant="secondary"
-                      className="gap-1 pl-2 pr-1 text-[11px]"
+                      className="gap-1 pl-1.5 pr-1 text-[11px]"
                     >
                       <Tag className="h-2.5 w-2.5" />
                       {tag}
@@ -353,7 +548,7 @@ export default function BookmarkForm() {
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Save
+              {isEditing ? "Update" : "Save"}
             </Button>
           </DialogFooter>
         </form>

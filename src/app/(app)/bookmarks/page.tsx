@@ -1,61 +1,21 @@
-import { Input } from "@/components/ui/input";
-import BookmarkForm from "@/components/bookmark-form";
-import LinkCard from "@/components/link-card";
+import BookmarksClient from "@/components/bookmarks-client";
+import { createClient } from "@/lib/supabase/server";
+import { getBookmarks, getTags } from "@/lib/supabase/query";
 
-export default function Bookmarks() {
+export default async function Bookmarks() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const [bookmarks, tags] = await Promise.all([getBookmarks(), getTags()]);
+
   return (
     <main className="w-full">
-      {/* header */}
-      <section className="w-full bg-[#F7F9F7] border-b border-border/70 py-8">
-        <div className="max-w-container mt-6">
-          <div className="flex flex-col gap-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <h1 className="text-4xl tracking-tight font-medium text-foreground">
-                  Bookmarks
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  4 links in your private vault.
-                </p>
-              </div>
-
-              <div className="flex gap-1.5 flex-row sm:items-center">
-                <div className="relative w-full sm:w-70">
-                  <Input
-                    type="search"
-                    placeholder="Search..."
-                    className="h-9 bg-white"
-                  />
-                </div>
-
-                <BookmarkForm />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Bookmark Links */}
-      <section className="max-w-container py-8">
-        <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-          <LinkCard />
-        </div>
-      </section>
+      <BookmarksClient
+        initialBookmarks={bookmarks}
+        initialTags={tags}
+        userId={user?.id}
+      />
     </main>
   );
 }
