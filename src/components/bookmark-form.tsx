@@ -47,17 +47,27 @@ import {
   updateBookmark,
 } from "@/lib/supabase/query";
 import { publishBookmarksSync } from "@/lib/bookmarks-sync";
+import { normalizeTag } from "@/lib/normalize-tag";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { BookmarkRow, TagRow } from "@/types";
 
+const MAX_TAG_NAME_LENGTH = 20;
 const bookmarkSchema = z.object({
   url: z.string().url("Enter a valid URL."),
-  title: z.string().trim().min(1, "Title is required.").max(200),
-  tags: z.array(z.string().trim().min(3).max(20)).max(3),
+  title: z.string().trim().min(3, "Title is required.").max(200),
+  tags: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(3, "Tags must be at least 3 characters.")
+        .max(MAX_TAG_NAME_LENGTH, `Tags must be at most ${MAX_TAG_NAME_LENGTH} characters.`)
+    )
+    .max(2),
 });
 
-const MAX_TAGS_PER_BOOKMARK = 3;
+const MAX_TAGS_PER_BOOKMARK = 2;
 
 type BookmarkFormValues = z.infer<typeof bookmarkSchema>;
 type BookmarkFormErrors = Partial<Record<keyof BookmarkFormValues, string>>;
@@ -74,12 +84,20 @@ type BookmarkFormProps = {
   trigger?: ReactNode;
 };
 
+const getDisplayTagName = (tag: string) =>
+  tag.length > MAX_TAG_NAME_LENGTH
+    ? `${tag.slice(0, MAX_TAG_NAME_LENGTH - 1)}…`
+    : tag;
+
 export default function BookmarkForm({
   availableTags: initialAvailableTags = [],
   bookmark,
   trigger,
 }: BookmarkFormProps) {
   const router = useRouter();
+  const clampedBookmarkTags =
+    bookmark?.tags.slice(0, MAX_TAGS_PER_BOOKMARK) ?? [];
+  const bookmarkTagKey = clampedBookmarkTags.join("|");
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [prefetchingTitle, setPrefetchingTitle] = useState(false);
@@ -90,9 +108,8 @@ export default function BookmarkForm({
     bookmark?.url ?? null
   );
   const [tagInput, setTagInput] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>(
-    bookmark?.tags ?? []
-  );
+  const [selectedTags, setSelectedTags] =
+    useState<string[]>(clampedBookmarkTags);
   const [errors, setErrors] = useState<BookmarkFormErrors>({});
   const [availableTags, setAvailableTags] = useState<TagOption[]>(
     initialAvailableTags.map((tag) => ({
@@ -117,10 +134,16 @@ export default function BookmarkForm({
     setTitle(bookmark?.title ?? "");
     setLastPrefetchedUrl(bookmark?.url ?? null);
     setTagInput("");
-    setSelectedTags(bookmark?.tags ?? []);
+    setSelectedTags(clampedBookmarkTags);
     setErrors({});
     setTagPickerOpen(false);
   };
+
+  useEffect(() => {
+    if (open) {
+      resetForm();
+    }
+  }, [bookmark?.id, bookmark?.title, bookmark?.url, bookmarkTagKey, open]);
 
   const getFormValues = (): BookmarkFormValues => ({
     url,
@@ -201,9 +224,17 @@ export default function BookmarkForm({
   }, [isEditing, lastPrefetchedUrl, open, url]);
 
   const addTag = (tagName: string) => {
-    const normalizedTag = tagName.trim().toLowerCase();
+    const normalizedTag = normalizeTag(tagName);
 
     if (!normalizedTag) {
+      return;
+    }
+
+    if (normalizedTag.length < 3) {
+      setErrors((current) => ({
+        ...current,
+        tags: "Tags must be at least 3 characters.",
+      }));
       return;
     }
 
@@ -417,9 +448,13 @@ export default function BookmarkForm({
                     <Input
                       ref={inputRef}
                       value={tagInput}
-                      onChange={(event) => setTagInput(event.target.value)}
+                      onChange={(event) => {
+                        setTagInput(event.target.value);
+                        setErrors((current) => ({ ...current, tags: undefined }));
+                      }}
                       placeholder="Search or create a tag..."
                       className="h-9"
+                      maxLength={MAX_TAG_NAME_LENGTH}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
@@ -440,9 +475,12 @@ export default function BookmarkForm({
                         type="button"
                         onClick={() => addTag(normalizedInput)}
                         className="inline-flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                        title={normalizedInput}
                       >
                         <Plus className="h-3.5 w-3.5" />
-                        Create "{normalizedInput}"
+                        <span className="truncate">
+                          Create "{getDisplayTagName(normalizedInput)}"
+                        </span>
                       </button>
                     ) : null}
 
@@ -462,10 +500,11 @@ export default function BookmarkForm({
                         <button
                           type="button"
                           onClick={() => addTag(tag.name)}
-                          className="inline-flex flex-1 items-center gap-2 px-1.5 py-1.5 text-left text-sm"
+                          className="inline-flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1.5 text-left text-sm"
+                          title={tag.name}
                         >
-                          <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-                          {tag.name}
+                          <Tag className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{getDisplayTagName(tag.name)}</span>
                         </button>
 
                         <AlertDialog>
@@ -474,14 +513,18 @@ export default function BookmarkForm({
                               type="button"
                               className="mr-1 grid h-6 w-6 place-items-center rounded text-muted-foreground opacity-0 transition group-hover/row:opacity-100 hover:bg-destructive/10 hover:text-destructive"
                               aria-label={`Delete tag ${tag.name} from library`}
+                              title={`Delete ${tag.name}`}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                Delete tag "{tag.name}"?
+                              <AlertDialogTitle
+                                className="w-full break-all"
+                                title={tag.name}
+                              >
+                                Delete tag "{getDisplayTagName(tag.name)}"?
                               </AlertDialogTitle>
                               <AlertDialogDescription>
                                 This removes the tag from your library and from
@@ -519,10 +562,11 @@ export default function BookmarkForm({
                     <Badge
                       key={tag}
                       variant="secondary"
-                      className="gap-1 pl-1.5 pr-1 text-[11px]"
+                      className="max-w-full gap-1 pl-1.5 pr-1 text-[11px]"
+                      title={tag}
                     >
-                      <Tag className="h-2.5 w-2.5" />
-                      {tag}
+                      <Tag className="h-2.5 w-2.5 shrink-0" />
+                      <span className="truncate">{getDisplayTagName(tag)}</span>
                       <button
                         type="button"
                         onClick={() => removeSelected(tag)}

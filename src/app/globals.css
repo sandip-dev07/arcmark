@@ -130,6 +130,6 @@
     font-family: var(--font-hanken-grotesk), system-ui;
   }
   .max-w-container {
-    @apply max-w-6xl mx-auto w-full px-4 sm:px-5;
+    @apply max-w-6xl mx-auto w-full px-3 sm:px-5;
   }
 }

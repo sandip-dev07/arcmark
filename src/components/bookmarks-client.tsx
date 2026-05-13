@@ -4,10 +4,13 @@ import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
 import BookmarkForm from "@/components/bookmark-form";
 import LinkCard from "@/components/link-card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { bookmarksSyncConfig } from "@/lib/bookmarks-sync";
 import { createClient } from "@/lib/supabase/client";
 import type { BookmarkRow, TagRow } from "@/types";
+
+const MAX_TAGS_PER_BOOKMARK = 2;
 
 type BookmarksClientProps = {
   initialBookmarks: BookmarkRow[];
@@ -30,9 +33,12 @@ const mapBookmarkTags = (rows: BookmarkTagJoinRow[]) => {
         ? [row.tags]
         : [];
 
+    const currentTags = tagsByBookmarkId.get(row.bookmark_id) ?? [];
+    const nextTags = [...currentTags, ...relatedTags.map((tag) => tag.name)];
+
     tagsByBookmarkId.set(
       row.bookmark_id,
-      relatedTags.map((tag) => tag.name)
+      [...new Set(nextTags)].slice(0, MAX_TAGS_PER_BOOKMARK)
     );
   }
 
@@ -48,23 +54,35 @@ export default function BookmarksClient({
   const [bookmarks, setBookmarks] = useState(initialBookmarks);
   const [tags, setTags] = useState(initialTags);
   const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const refreshTimeoutRef = useRef<number | null>(null);
+
+  const availableFilterTags = useMemo(() => {
+    const tagSet = new Set<string>();
+
+    for (const bookmark of bookmarks) {
+      for (const tag of bookmark.tags) {
+        tagSet.add(tag);
+      }
+    }
+
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+  }, [bookmarks]);
 
   const visibleBookmarks = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    if (!query) {
-      return bookmarks;
-    }
-
     return bookmarks.filter((bookmark) => {
+      const matchesTag = activeTag ? bookmark.tags.includes(activeTag) : true;
       const inTitle = bookmark.title.toLowerCase().includes(query);
       const inUrl = bookmark.url.toLowerCase().includes(query);
       const inTags = bookmark.tags.some((tag) => tag.toLowerCase().includes(query));
 
-      return inTitle || inUrl || inTags;
+      const matchesSearch = !query || inTitle || inUrl || inTags;
+
+      return matchesTag && matchesSearch;
     });
-  }, [bookmarks, search]);
+  }, [activeTag, bookmarks, search]);
 
   useEffect(() => {
     if (!userId) {
@@ -115,7 +133,11 @@ export default function BookmarksClient({
         setBookmarks(
           bookmarkRows.map((bookmark) => ({
             ...bookmark,
-            tags: tagsByBookmarkId.get(bookmark.id) ?? [],
+            tags:
+              tagsByBookmarkId.get(bookmark.id)?.slice(
+                0,
+                MAX_TAGS_PER_BOOKMARK
+              ) ?? [],
           }))
         );
         setTags((latestTags ?? []) as TagRow[]);
@@ -216,6 +238,30 @@ export default function BookmarksClient({
       </section>
 
       <section className="max-w-container py-8">
+        {availableFilterTags.length > 0 ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant={activeTag === null ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveTag(null)}
+            >
+              All
+            </Button>
+            {availableFilterTags.map((tag) => (
+              <Button
+                key={tag}
+                type="button"
+                variant={activeTag === tag ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveTag(tag)}
+              >
+                {tag}
+              </Button>
+            ))}
+          </div>
+        ) : null}
+
         {visibleBookmarks.length > 0 ? (
           <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
             {visibleBookmarks.map((bookmark) => (
@@ -230,7 +276,7 @@ export default function BookmarksClient({
           <div className="px-6 py-14 text-center">
             <h2 className="text-lg font-medium text-foreground">No matches</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Try a different search term.
+              Try a different search term or tag filter.
             </p>
           </div>
         ) : (

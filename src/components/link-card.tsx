@@ -41,6 +41,12 @@ type LinkCardProps = {
   availableTags?: TagRow[];
 };
 
+const MAX_TAG_NAME_LENGTH = 20;
+const getDisplayTagName = (tag: string) =>
+  tag.length > MAX_TAG_NAME_LENGTH
+    ? `${tag.slice(0, MAX_TAG_NAME_LENGTH - 1)}…`
+    : tag;
+
 const getHostname = (value: string) => {
   try {
     return new URL(value).hostname.replace(/^www\./, "");
@@ -66,7 +72,7 @@ export default function LinkCard({
     "origin"
   );
   const hostname = getHostname(bookmark.url);
-  const displayTags = bookmark.tags.slice(0, 3);
+  const displayTags = bookmark.tags.slice(0, 2);
   const originIconUrl = URLIcon(bookmark.url);
   const googleIconUrl = originIconUrl
     ? `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
@@ -217,19 +223,23 @@ export default function LinkCard({
         </a>
       </div>
 
-      <div className="flex items-center justify-between px-2.5 py-0.5">
+      <div className="flex items-center justify-between px-2.5 py-0.75">
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Tag size={12} />
           {displayTags.length > 0 ? (
-            <span className="flex items-center gap-1">
+            <span className="flex min-w-0 items-center gap-1">
               {displayTags.map((tag) => (
-                <span key={tag} className="rounded-sm px-1 py-0.5">
-                  {tag}
+                <span
+                  key={tag}
+                  title={tag}
+                  className="max-w-24 truncate rounded-sm bg-stone-200 px-1 py-px cursor-default"
+                >
+                  {getDisplayTagName(tag)}
                 </span>
               ))}
             </span>
           ) : (
-            <span className="rounded-sm px-1 py-0.5">No tags</span>
+            <span className="rounded-sm px-1 py-px">No tags</span>
           )}
         </div>
         <p className="text-end text-xs text-muted-foreground">

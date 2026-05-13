@@ -6,10 +6,15 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import type { BookmarkRow, TagRow } from "@/types";
 
+const MAX_TAGS_PER_BOOKMARK = 2;
+
 const bookmarkInputSchema = z.object({
   url: z.string().trim().url("Enter a valid URL."),
-  title: z.string().trim().min(1, "Title is required.").max(200),
-  tags: z.array(z.string().trim().min(1).max(50)).max(3).default([]),
+  title: z.string().trim().min(3, "Title is required.").max(200),
+  tags: z
+    .array(z.string().trim().min(1).max(20))
+    .max(MAX_TAGS_PER_BOOKMARK)
+    .default([]),
 });
 
 export type CreateBookmarkInput = z.infer<typeof bookmarkInputSchema>;
@@ -23,6 +28,7 @@ const isBookmarksTableMissing = (message: string) =>
 const missingTableMessage =
   "Bookmarks table is not set up yet. Run supabase/bookmarks.sql in the Supabase SQL Editor first.";
 
+  // get tags
 export const getTags = async (): Promise<TagRow[]> => {
   const supabase = await createClient();
   const {
@@ -49,6 +55,7 @@ export const getTags = async (): Promise<TagRow[]> => {
   return (data ?? []) as TagRow[];
 };
 
+// get bookmarks
 export const getBookmarks = async (): Promise<BookmarkRow[]> => {
   const supabase = await createClient();
   const {
@@ -105,9 +112,12 @@ export const getBookmarks = async (): Promise<BookmarkRow[]> => {
         ? [row.tags]
         : [];
 
+    const currentTags = tagsByBookmarkId.get(row.bookmark_id) ?? [];
+    const nextTags = [...currentTags, ...relatedTags.map((tag) => tag.name)];
+
     tagsByBookmarkId.set(
       row.bookmark_id,
-      relatedTags.map((tag) => tag.name)
+      [...new Set(nextTags)].slice(0, MAX_TAGS_PER_BOOKMARK)
     );
   }
 
@@ -117,6 +127,7 @@ export const getBookmarks = async (): Promise<BookmarkRow[]> => {
   }));
 };
 
+// add bookmark
 export const createBookmark = async (input: CreateBookmarkInput) => {
   const parsed = bookmarkInputSchema.safeParse(input);
 
@@ -225,6 +236,7 @@ export const createBookmark = async (input: CreateBookmarkInput) => {
   };
 };
 
+// sync bookmark tags
 const syncBookmarkTags = async (
   bookmarkId: string,
   userId: string,
@@ -299,6 +311,7 @@ const syncBookmarkTags = async (
   return { ok: true as const };
 };
 
+// update bookmark
 export const updateBookmark = async (
   bookmarkId: string,
   input: CreateBookmarkInput
@@ -370,6 +383,7 @@ export const updateBookmark = async (
   };
 };
 
+// delete bookmark
 export const deleteBookmark = async (bookmarkId: string) => {
   const supabase = await createClient();
   const {
@@ -408,6 +422,7 @@ export const deleteBookmark = async (bookmarkId: string) => {
   return { ok: true as const };
 };
 
+// delete tag
 export const deleteTag = async (tagId: string) => {
   const supabase = await createClient();
   const {

@@ -6,7 +6,13 @@ export default function AppLogo({ href }: { href?: string }) {
     <Link href={href || "/"}>
       <div className="flex items-center gap-1">
         <div>
-          <Image src={"/logo.svg"} width={24} height={24} alt="arcmark" />
+          <Image
+            src="/logo.svg"
+            width={24}
+            height={24}
+            alt="arcmark"
+            loading="eager"
+          />
         </div>
         <h1 className="text-xl font-semibold sm:text-[22px]">
           Arc<span className="font-normal">Mark</span>
