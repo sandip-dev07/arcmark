@@ -18,7 +18,6 @@ ArcMark is a private bookmark manager built with Next.js and Supabase. Users sig
 - Supabase Auth, Database, and Realtime
 - TypeScript
 - Tailwind CSS
-- Biome
 
 ## Local Setup
 
@@ -217,7 +216,7 @@ Compared with folders, tags fit this product better because they are lighter and
 
 The main challenge was that bookmark data is normalized across three tables. A single user action can produce multiple database events, and trying to manually patch local state from each individual event becomes fragile quickly.
 
-The fix was to stop treating Realtime events as full data updates. Instead, I used them as refresh triggers, added a short debounce, and refetched the authoritative dataset before rebuilding the bookmark-to-tags mapping. That reduced edge cases and kept the client state consistent.
+The fix was to stop treating Realtime events as full data updates. Instead, I used them as refresh triggers, added a short debounce.
 
 ### Keeping same-browser tabs feeling instant
 
