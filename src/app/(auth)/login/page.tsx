@@ -1,8 +1,21 @@
 import AppLogo from "@/components/app-logo";
-import { Button } from "@/components/ui/button";
-import { FcGoogle } from "react-icons/fc";
+import LoginButton from "@/components/login-button";
 
-export default function Login() {
+type LoginPageProps = {
+  searchParams: Promise<{
+    error?: string | string[];
+    next?: string | string[];
+  }>;
+};
+
+const getFirstValue = (value?: string | string[]) =>
+  Array.isArray(value) ? value[0] : value;
+
+export default async function Login({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+  const error = getFirstValue(params.error);
+  const next = getFirstValue(params.next);
+
   return (
     <main className="relative w-full min-h-svh flex items-center justify-center">
       <div className="absolute inset-x-0 top-0 -z-10 h-176 bg-[radial-gradient(circle_at_top,rgba(187,211,255,0.7),transparent_60%)]" />
@@ -14,9 +27,7 @@ export default function Login() {
         </div>
 
         <div className="w-full mt-6">
-          <Button variant={"default"} size={"lg"} className="w-full gap-1.5">
-          <FcGoogle/>  Login with Google
-          </Button>
+          <LoginButton error={error} next={next} />
         </div>
       </section>
     </main>

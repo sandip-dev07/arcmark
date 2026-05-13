@@ -1,8 +1,5 @@
-import { ArrowLeft, Plus, Search } from "lucide-react";
-import Link from "next/link";
-
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import BookmarkForm from "@/components/bookmark-form";
 import LinkCard from "@/components/link-card";
 
 export default function Bookmarks() {
@@ -31,10 +28,7 @@ export default function Bookmarks() {
                   />
                 </div>
 
-                <Button size="lg" className="w-fit">
-                  <Plus />
-                  Add
-                </Button>
+                <BookmarkForm />
               </div>
             </div>
           </div>

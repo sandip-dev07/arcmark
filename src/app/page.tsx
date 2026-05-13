@@ -27,10 +27,10 @@ export default function Home() {
               asChild
               className="hidden sm:flex flex-1 sm:flex-none"
             >
-              <Link href="/bookmarks">Login</Link>
+              <Link href="/login">Login</Link>
             </Button>
             <Button variant={"default"} asChild className="flex-1 sm:flex-none">
-              <Link href="/bookmarks">Get Started</Link>
+              <Link href="/login">Get Started</Link>
             </Button>
           </div>
         </div>
@@ -56,7 +56,7 @@ export default function Home() {
 
             <div className="mt-8 flex flex-col justify-center gap-3 sm:mt-10 sm:flex-row items-center">
               <Button asChild size="lg" className="gap-2 w-fit">
-                <Link href="/bookmarks">
+                <Link href="/login">
                   Open your vault
                   <ArrowRight className="h-4 w-4" />
                 </Link>
@@ -87,8 +87,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-
-          {/* Decorative card preview */}
         </div>
       </section>
     </main>
