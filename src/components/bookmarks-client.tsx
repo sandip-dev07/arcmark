@@ -58,6 +58,14 @@ export default function BookmarksClient({
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const refreshTimeoutRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    setBookmarks(initialBookmarks);
+  }, [initialBookmarks]);
+
+  useEffect(() => {
+    setTags(initialTags);
+  }, [initialTags]);
+
   const availableFilterTags = useMemo(() => {
     const tagSet = new Set<string>();
 
