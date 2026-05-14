@@ -1,85 +1,100 @@
 # ArcMark
 
-ArcMark is a private bookmark manager built with Next.js and Supabase. Users sign in with Google, save personal bookmarks, organize them with tags, and see changes sync in real time across tabs and devices.
+ArcMark is a private bookmark manager built with Next.js and Supabase. It supports Google Sign-In, private bookmark storage, tags, and real-time updates whenever bookmark data changes.
 
 ## Features
 
 - Google OAuth login with Supabase Auth
-- Private bookmarks protected by Supabase Row Level Security
+- Private bookmarks scoped per user using Row Level Security (RLS)
 - Add, edit, copy, and delete bookmarks
+- Tag support with filtering on the bookmarks page
 - Automatic title prefill from URL metadata
-- Real-time bookmark sync
-- Tag-based organization and filtering
+- Real-time bookmark updates without a full page reload
 
 ## Tech Stack
 
 - Next.js 16
-- React 19
-- Supabase Auth, Database, and Realtime
 - TypeScript
+- zod validation
+- Supabase Auth
+- Supabase Postgres
+- Supabase Realtime
 - Tailwind CSS
+- shadcn/ui
 
 ## Local Setup
 
-1. Install dependencies:
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-2. Add these variables to `.env.local`:
+### 2. Create a local environment file
+
+Add your Supabase project values:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 ```
 
-3. Run the SQL in `supabase/bookmarks.sql` inside the Supabase SQL Editor.
+### 3. Run the SQL schema
 
-4. In Supabase Auth:
+Run the SQL inside `supabase/bookmarks.sql` using the Supabase SQL Editor.
 
-- enable the Google provider
-- add the Supabase callback URL in Google Cloud
-- add your app callback URL in Supabase URL configuration
+### 4. Enable Google OAuth
 
-5. Start the app:
+In Supabase Auth, enable Google as an OAuth provider.
+
+### 5. Configure callback URLs
+
+Configure the callback URL in both Google Cloud Console and Supabase so the authentication flow redirects back to your application correctly.
+
+### 6. Start the development server
 
 ```bash
 npm run dev
 ```
 
-Then open `http://localhost:3000`.
+Open:
+
+```txt
+http://localhost:3000
+```
 
 ## Scripts
 
 ```bash
 npm run dev
 npm run build
-npm run start
-npm run lint
-npm run format
 ```
 
-## Supabase Auth And Route Protection
+## Supabase Auth and Route Protection
 
-This app uses Google OAuth only.
+This application uses Google OAuth only.
 
-The client login flow starts in `src/lib/supabase/auth.ts`, where `signInWithGoogle()` calls `supabase.auth.signInWithOAuth(...)` and redirects through `/auth/callback`.
+The client-side login flow starts in `src/lib/supabase/auth.ts`, where `signInWithGoogle()` calls:
+
+```ts
+supabase.auth.signInWithOAuth(...)
+```
+
+and redirects through `/auth/callback`.
 
 Route protection is handled in `src/proxy.ts`.
 
-- if a user is not signed in, they are redirected from `/bookmarks` to `/login`
-- if a signed-in user visits `/login`, they are redirected to `/bookmarks`
-- the original destination is preserved through the `next` query parameter
+- If a user is not signed in, they are redirected from `/bookmarks` to `/login`
+- If a signed-in user visits `/login`, they are redirected to `/bookmarks`
 
-Server-side session handling uses:
+Server-side session handling is implemented in:
 
 - `src/lib/supabase/server.ts`
 - `src/lib/supabase/middleware.ts`
 
-## Database And RLS
+## Database and Row Level Security (RLS)
 
-RLS is defined in `supabase/bookmarks.sql`.
+RLS policies are defined in `supabase/bookmarks.sql`.
 
 The schema uses three tables:
 
@@ -91,95 +106,82 @@ All three tables have Row Level Security enabled.
 
 ### `bookmarks`
 
-- `select`, `insert`, `update`, and `delete` are allowed only when `auth.uid() = user_id`
+This table stores bookmark data. Each bookmark belongs to a single user through `user_id`.
 
-Why this is correct:
+Policies:
 
-- every bookmark belongs to one user
-- ownership is checked directly on the bookmark row
-- one user cannot read or modify another user's bookmarks, even if they bypass the UI
+- `SELECT` allowed only for rows owned by `auth.uid()`
+- `INSERT` allowed only when `user_id = auth.uid()`
+- `UPDATE` allowed only for rows owned by `auth.uid()`
+- `DELETE` allowed only for rows owned by `auth.uid()`
+
+This acts as the main privacy boundary for bookmark data.
 
 ### `tags`
 
-- `select`, `insert`, `update`, and `delete` are allowed only when `auth.uid() = user_id`
+This table stores private tags for each user.
 
-Why this is correct:
+Policies:
 
-- tags are private per user
-- the unique constraint is `(user_id, name)`, so different users can still have tags with the same name
-- one user cannot access another user's tag library
+- `SELECT`, `INSERT`, `UPDATE`, and `DELETE` are allowed only for rows owned by `auth.uid()`
+
+The `(user_id, name)` unique constraint allows multiple users to create tags with the same name independently.
 
 ### `bookmark_tags`
 
-This join table does not store `user_id` directly, so ownership is checked through the related bookmark and tag.
+This is the join table between bookmarks and tags.
 
-- `select` is allowed only if the linked bookmark belongs to `auth.uid()`
-- `insert` is allowed only if both the linked bookmark and linked tag belong to `auth.uid()`
-- `delete` is allowed only if the linked bookmark belongs to `auth.uid()`
+It does not store `user_id`, so ownership validation is enforced through related bookmark and tag records.
 
-Why this is correct:
+Policies:
 
-- it prevents cross-user joins
-- it stops a user from attaching their tag to someone else's bookmark
-- it keeps the normalized schema private and internally consistent
+- `SELECT` allowed only when the related bookmark belongs to `auth.uid()`
+- `INSERT` allowed only when both the bookmark and tag belong to `auth.uid()`
+- `DELETE` allowed only when the related bookmark belongs to `auth.uid()`
 
-The important point is that privacy is enforced in the database, not just in frontend code.
+This prevents cross-user relationships while keeping the schema normalized.
 
 ## Real-Time Sync
 
-The realtime logic lives in `src/components/bookmarks-client.tsx`.
+Real-time synchronization is implemented in:
 
-ArcMark subscribes to Supabase Realtime Postgres change events for:
+```txt
+src/components/bookmarks-client.tsx
+```
+
+The bookmarks page subscribes to Supabase Postgres Changes for:
 
 - `public.bookmarks`
 - `public.tags`
 - `public.bookmark_tags`
 
-The client creates a channel named:
+Whenever a change occurs in the database, Supabase broadcasts the update instantly to all connected clients. The client then reloads the latest bookmarks, tags, and bookmark-tag mappings from Supabase and updates the local React state without requiring a full page reload.
 
-- `bookmarks-sync:${userId}`
+### Sync Strategy
 
-All three tables are required because a single bookmark action can affect multiple rows:
+The page starts with server-rendered bookmark data and maintains a client-side state copy.
 
-- creating a bookmark inserts into `bookmarks`
-- creating a new tag may insert into `tags`
-- attaching tags inserts into `bookmark_tags`
-- editing or deleting a bookmark can also affect join rows
+After receiving a realtime event, it fetches:
 
-### Sync strategy
+- Latest bookmarks ordered by `created_at`
+- Latest tags ordered by `name`
+- Latest bookmark-tag relationships for visible bookmark IDs
 
-When an event arrives, the client does not try to patch one row optimistically from the payload. Instead, it:
+This approach is simple, reliable, and avoids manually patching local state using raw realtime payloads.
 
-1. schedules a small debounced refresh
-2. refetches bookmarks, tags, and bookmark-tag joins from Supabase
-3. rebuilds the bookmark-to-tags mapping
-4. updates local React state in a transition
+### Subscription Cleanup
 
-This approach is simpler and more reliable than manually reconciling partial updates across a normalized schema.
+The realtime subscription is created inside a `useEffect` hook and cleaned up within the same effect.
 
-### Same-browser tab sync
+Cleanup includes:
 
-`src/lib/bookmarks-sync.ts` adds an extra local sync layer using:
+- Clearing pending refresh timeouts
+- Unsubscribing from the Supabase auth listener
+- Removing the active realtime channel
 
-- `BroadcastChannel`
-- `localStorage` storage events
+This prevents duplicate listeners after rerenders or route transitions.
 
-That makes multiple tabs in the same browser feel instant, while Supabase Realtime handles cross-browser and cross-device updates.
-
-### Subscription cleanup
-
-Cleanup happens in the `useEffect` return function in `src/components/bookmarks-client.tsx`.
-
-It:
-
-- clears any pending refresh timeout
-- closes the `BroadcastChannel`
-- removes the `storage` event listener
-- removes the Supabase channel with `supabase.removeChannel(channel)`
-
-That prevents duplicated listeners and stale subscriptions after unmounts.
-
-### Database requirement
+### Database Requirement
 
 `supabase/bookmarks.sql` also adds these tables to the `supabase_realtime` publication:
 
@@ -187,41 +189,33 @@ That prevents duplicated listeners and stale subscriptions after unmounts.
 - `public.tags`
 - `public.bookmark_tags`
 
-Without that, normal CRUD still works, but realtime updates across devices do not.
-
-## URL Metadata Prefill
-
-When a user enters a URL while creating a bookmark, the form waits briefly and then calls `/api/url-metadata`.
-
-That route uses `src/lib/url-metadata.ts` and `open-graph-scraper` to try a few title sources in order:
-
-- Open Graph title
-- Twitter title
-- Dublin Core title
-- fallback page title
-
-If a title is found, the form prefills it automatically.
+Without this configuration, normal CRUD operations still work, but real-time synchronization across tabs and devices will not function.
 
 ## Bonus Feature
 
-The bonus feature is tags.
+The bonus feature implemented is **Tags**.
 
-Tags make the bookmark manager more useful without adding much complexity. Users can group links by intent like `work`, `docs`, `important`, or `design`, then filter quickly.
+Tags make bookmark organization more flexible and efficient. Users can group bookmarks using labels such as:
 
-Compared with folders, tags fit this product better because they are lighter and faster to use during bookmark capture.
+- `work`
+- `docs`
+- `important`
+- `design`
 
-## Problems I Ran Into
+and quickly filter bookmarks based on those tags.
 
-### Realtime sync across tabs and devices
+Compared to folders, tags provide a lighter and faster workflow for bookmark organization.
 
-The main challenge was that bookmark data is normalized across three tables. A single user action can produce multiple database events, and trying to manually patch local state from each individual event becomes fragile quickly.
+## Challenges Faced
 
-The fix was to stop treating Realtime events as full data updates. Instead, I used them as refresh triggers, added a short debounce.
+### Real-Time Synchronization Across Tabs and Devices
 
-### Keeping same-browser tabs feeling instant
+Implementing basic CRUD operations like adding, updating, and deleting bookmarks was relatively straightforward.
 
-Supabase Realtime is useful for cross-device sync, but local browser tabs can still feel slightly delayed. I added a lightweight helper with `BroadcastChannel` and `localStorage` events so tabs in the same browser respond immediately after create, update, or delete actions.
+The more interesting challenge was implementing real-time synchronization across tabs and devices using Supabase Realtime.
 
-### Enforcing privacy in the join table
+Since it was my first time working with Supabase Realtime features, I spent time studying the documentation to understand how subscriptions and database broadcasts work internally.
 
-`bookmark_tags` does not have a `user_id` column, so ownership cannot be checked directly on that row. The RLS policies had to validate ownership through the related bookmark and tag records. That made the policies a little more complex, but it keeps the normalized schema secure.
+After understanding the concepts, I implemented the feature successfully using VS Code and AI tools like Codex to improve development productivity.
+
+Overall, it was not the most difficult part of the project, but definitely the most interesting and rewarding part because it gave me hands-on experience building real-time functionality.
