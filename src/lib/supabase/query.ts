@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
@@ -27,12 +28,92 @@ const isBookmarksTableMissing = (message: string) =>
 const missingTableMessage =
   "Bookmarks table is not set up yet. Run supabase/bookmarks.sql in the Supabase SQL Editor first.";
 
-  // get tags
-export const getTags = async (): Promise<TagRow[]> => {
+type BookmarkTagRelationRow = {
+  bookmark_id: string;
+  tags: { name: string } | { name: string }[] | null;
+};
+
+const mapBookmarkTags = (rows: BookmarkTagRelationRow[]) => {
+  const tagsByBookmarkId = new Map<string, string[]>();
+
+  for (const row of rows) {
+    const relatedTags = Array.isArray(row.tags)
+      ? row.tags
+      : row.tags
+        ? [row.tags]
+        : [];
+
+    const currentTags = tagsByBookmarkId.get(row.bookmark_id) ?? [];
+    const nextTags = [...currentTags, ...relatedTags.map((tag) => tag.name)];
+
+    tagsByBookmarkId.set(
+      row.bookmark_id,
+      [...new Set(nextTags)].slice(0, MAX_TAGS_PER_BOOKMARK)
+    );
+  }
+
+  return tagsByBookmarkId;
+};
+
+const getAuthenticatedUser = async () => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  return { supabase, user };
+};
+
+const upsertTagsForUser = async (
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  tags: string[]
+) => {
+  const uniqueTags = [...new Set(tags)];
+
+  if (uniqueTags.length === 0) {
+    return { ok: true as const, data: [] as Array<{ id: string; name: string }> };
+  }
+
+  const { error: tagsError } = await supabase.from("tags").upsert(
+    uniqueTags.map((name) => ({
+      user_id: userId,
+      name,
+    })),
+    {
+      onConflict: "user_id,name",
+      ignoreDuplicates: false,
+    }
+  );
+
+  if (tagsError) {
+    return {
+      ok: false as const,
+      error: tagsError.message,
+    };
+  }
+
+  const { data: tagRows, error: tagRowsError } = await supabase
+    .from("tags")
+    .select("id, name")
+    .eq("user_id", userId)
+    .in("name", uniqueTags);
+
+  if (tagRowsError) {
+    return {
+      ok: false as const,
+      error: tagRowsError.message,
+    };
+  }
+
+  return {
+    ok: true as const,
+    data: (tagRows ?? []) as Array<{ id: string; name: string }>,
+  };
+};
+
+export const getTags = async (): Promise<TagRow[]> => {
+  const { supabase, user } = await getAuthenticatedUser();
 
   if (!user) {
     return [];
@@ -54,12 +135,8 @@ export const getTags = async (): Promise<TagRow[]> => {
   return (data ?? []) as TagRow[];
 };
 
-// get bookmarks
 export const getBookmarks = async (): Promise<BookmarkRow[]> => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getAuthenticatedUser();
 
   if (!user) {
     return [];
@@ -99,26 +176,9 @@ export const getBookmarks = async (): Promise<BookmarkRow[]> => {
     );
   }
 
-  const tagsByBookmarkId = new Map<string, string[]>();
-
-  for (const row of (bookmarkTags ?? []) as Array<{
-    bookmark_id: string;
-    tags: { name: string } | { name: string }[] | null;
-  }>) {
-    const relatedTags = Array.isArray(row.tags)
-      ? row.tags
-      : row.tags
-        ? [row.tags]
-        : [];
-
-    const currentTags = tagsByBookmarkId.get(row.bookmark_id) ?? [];
-    const nextTags = [...currentTags, ...relatedTags.map((tag) => tag.name)];
-
-    tagsByBookmarkId.set(
-      row.bookmark_id,
-      [...new Set(nextTags)].slice(0, MAX_TAGS_PER_BOOKMARK)
-    );
-  }
+  const tagsByBookmarkId = mapBookmarkTags(
+    (bookmarkTags ?? []) as BookmarkTagRelationRow[]
+  );
 
   return (bookmarks ?? []).map((bookmark) => ({
     ...(bookmark as Omit<BookmarkRow, "tags">),
@@ -126,7 +186,6 @@ export const getBookmarks = async (): Promise<BookmarkRow[]> => {
   }));
 };
 
-// add bookmark
 export const createBookmark = async (input: CreateBookmarkInput) => {
   const parsed = bookmarkInputSchema.safeParse(input);
 
@@ -137,10 +196,7 @@ export const createBookmark = async (input: CreateBookmarkInput) => {
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getAuthenticatedUser();
 
   if (!user) {
     return {
@@ -175,46 +231,22 @@ export const createBookmark = async (input: CreateBookmarkInput) => {
   }
 
   if (parsed.data.tags.length > 0) {
-    const uniqueTags = [...new Set(parsed.data.tags)];
-    const { error: tagsError } = await supabase.from("tags").upsert(
-      uniqueTags.map((name) => ({
-        user_id: user.id,
-        name,
-      })),
-      {
-        onConflict: "user_id,name",
-        ignoreDuplicates: false,
-      }
+    const tagResult = await upsertTagsForUser(
+      supabase,
+      user.id,
+      parsed.data.tags
     );
 
-    if (tagsError) {
-      return {
-        ok: false as const,
-        error: tagsError.message,
-      };
+    if (!tagResult.ok) {
+      return tagResult;
     }
 
-    const { data: tagRows, error: tagRowsError } = await supabase
-      .from("tags")
-      .select("id, name")
-      .eq("user_id", user.id)
-      .in("name", uniqueTags);
-
-    if (tagRowsError) {
-      return {
-        ok: false as const,
-        error: tagRowsError.message,
-      };
-    }
-
-    const { error: bookmarkTagsError } = await supabase
-      .from("bookmark_tags")
-      .insert(
-        (tagRows ?? []).map((tag) => ({
-          bookmark_id: bookmark.id,
-          tag_id: tag.id,
-        }))
-      );
+    const { error: bookmarkTagsError } = await supabase.from("bookmark_tags").insert(
+      tagResult.data.map((tag) => ({
+        bookmark_id: bookmark.id,
+        tag_id: tag.id,
+      }))
+    );
 
     if (bookmarkTagsError) {
       return {
@@ -223,6 +255,8 @@ export const createBookmark = async (input: CreateBookmarkInput) => {
       };
     }
   }
+
+  revalidatePath("/bookmarks");
 
   return {
     ok: true as const,
@@ -233,14 +267,12 @@ export const createBookmark = async (input: CreateBookmarkInput) => {
   };
 };
 
-// sync bookmark tags
 const syncBookmarkTags = async (
   bookmarkId: string,
   userId: string,
   tags: string[]
 ) => {
   const supabase = await createClient();
-  const uniqueTags = [...new Set(tags)];
 
   const { error: deleteExistingError } = await supabase
     .from("bookmark_tags")
@@ -254,49 +286,22 @@ const syncBookmarkTags = async (
     };
   }
 
-  if (uniqueTags.length === 0) {
+  if (tags.length === 0) {
     return { ok: true as const };
   }
 
-  const { error: tagsError } = await supabase.from("tags").upsert(
-    uniqueTags.map((name) => ({
-      user_id: userId,
-      name,
-    })),
-    {
-      onConflict: "user_id,name",
-      ignoreDuplicates: false,
-    }
+  const tagResult = await upsertTagsForUser(supabase, userId, tags);
+
+  if (!tagResult.ok) {
+    return tagResult;
+  }
+
+  const { error: bookmarkTagsError } = await supabase.from("bookmark_tags").insert(
+    tagResult.data.map((tag) => ({
+      bookmark_id: bookmarkId,
+      tag_id: tag.id,
+    }))
   );
-
-  if (tagsError) {
-    return {
-      ok: false as const,
-      error: tagsError.message,
-    };
-  }
-
-  const { data: tagRows, error: tagRowsError } = await supabase
-    .from("tags")
-    .select("id, name")
-    .eq("user_id", userId)
-    .in("name", uniqueTags);
-
-  if (tagRowsError) {
-    return {
-      ok: false as const,
-      error: tagRowsError.message,
-    };
-  }
-
-  const { error: bookmarkTagsError } = await supabase
-    .from("bookmark_tags")
-    .insert(
-      (tagRows ?? []).map((tag) => ({
-        bookmark_id: bookmarkId,
-        tag_id: tag.id,
-      }))
-    );
 
   if (bookmarkTagsError) {
     return {
@@ -308,7 +313,6 @@ const syncBookmarkTags = async (
   return { ok: true as const };
 };
 
-// update bookmark
 export const updateBookmark = async (
   bookmarkId: string,
   input: CreateBookmarkInput
@@ -322,10 +326,7 @@ export const updateBookmark = async (
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getAuthenticatedUser();
 
   if (!user) {
     return {
@@ -369,6 +370,8 @@ export const updateBookmark = async (
     return syncResult;
   }
 
+  revalidatePath("/bookmarks");
+
   return {
     ok: true as const,
     data: {
@@ -378,12 +381,8 @@ export const updateBookmark = async (
   };
 };
 
-// delete bookmark
 export const deleteBookmark = async (bookmarkId: string) => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getAuthenticatedUser();
 
   if (!user) {
     return {
@@ -412,15 +411,13 @@ export const deleteBookmark = async (bookmarkId: string) => {
     };
   }
 
+  revalidatePath("/bookmarks");
+
   return { ok: true as const };
 };
 
-// delete tag
 export const deleteTag = async (tagId: string) => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getAuthenticatedUser();
 
   if (!user) {
     return {
@@ -448,6 +445,8 @@ export const deleteTag = async (tagId: string) => {
       error: error.message,
     };
   }
+
+  revalidatePath("/bookmarks");
 
   return { ok: true as const };
 };

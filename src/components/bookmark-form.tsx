@@ -47,6 +47,7 @@ import {
   updateBookmark,
 } from "@/lib/supabase/query";
 import { normalizeTag } from "@/lib/normalize-tag";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { BookmarkRow, TagRow } from "@/types";
 
@@ -92,6 +93,7 @@ export default function BookmarkForm({
   bookmark,
   trigger,
 }: BookmarkFormProps) {
+  const router = useRouter();
   const clampedBookmarkTags =
     bookmark?.tags.slice(0, MAX_TAGS_PER_BOOKMARK) ?? [];
   const bookmarkTagKey = clampedBookmarkTags.join("|");
@@ -298,6 +300,7 @@ export default function BookmarkForm({
     );
     setErrors((current) => ({ ...current, tags: undefined }));
     toast.success(`Deleted tag "${tagToDelete.name}".`);
+    router.refresh();
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -326,6 +329,7 @@ export default function BookmarkForm({
       );
       resetForm();
       setOpen(false);
+      router.refresh();
     } finally {
       setSubmitting(false);
     }

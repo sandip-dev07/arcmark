@@ -9,6 +9,7 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import BookmarkForm from "@/components/bookmark-form";
@@ -64,6 +65,7 @@ export default function LinkCard({
   bookmark,
   availableTags = [],
 }: LinkCardProps) {
+  const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [iconAttempt, setIconAttempt] = useState<"origin" | "google" | "fallback">(
     "origin"
@@ -102,6 +104,7 @@ export default function LinkCard({
     }
 
     toast.success("Bookmark deleted.");
+    router.refresh();
   };
 
   return (

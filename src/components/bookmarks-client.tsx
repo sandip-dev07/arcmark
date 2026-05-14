@@ -44,6 +44,8 @@ const mapBookmarkTags = (rows: BookmarkTagJoinRow[]) => {
   return tagsByBookmarkId;
 };
 
+const getRealtimeFilter = (userId: string) => `user_id=eq.${userId}`;
+
 export default function BookmarksClient({
   initialBookmarks,
   initialTags,
@@ -87,6 +89,8 @@ export default function BookmarksClient({
     if (!userId) {
       return;
     }
+
+    let active = true;
 
     const loadLatest = async () => {
       const { data: latestBookmarks, error: bookmarksError } = await supabase
@@ -154,31 +158,77 @@ export default function BookmarksClient({
       }, 150);
     };
 
-    const channel = supabase
-      .channel(`bookmarks-sync:${userId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "bookmarks" },
-        scheduleRefresh
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tags" },
-        scheduleRefresh
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "bookmark_tags" },
-        scheduleRefresh
-      )
-      .subscribe();
+    const onRealtimeChange = () => {
+      scheduleRefresh();
+    };
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const authSubscription = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (session?.access_token) {
+          await supabase.realtime.setAuth(session.access_token);
+        }
+      }
+    );
+
+    const setupRealtime = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.access_token) {
+        await supabase.realtime.setAuth(session.access_token);
+      }
+
+      if (!active) {
+        return;
+      }
+
+      channel = supabase
+        .channel(`bookmarks-sync:${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "bookmarks",
+            filter: getRealtimeFilter(userId),
+          },
+          onRealtimeChange
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "tags",
+            filter: getRealtimeFilter(userId),
+          },
+          onRealtimeChange
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "bookmark_tags" },
+          onRealtimeChange
+        )
+        .subscribe();
+    };
+
+    void setupRealtime();
 
     return () => {
+      active = false;
+
       if (refreshTimeoutRef.current !== null) {
         window.clearTimeout(refreshTimeoutRef.current);
       }
 
-      void supabase.removeChannel(channel);
+      authSubscription.data.subscription.unsubscribe();
+
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
     };
   }, [supabase, userId]);
 
