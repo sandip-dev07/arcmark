@@ -1,0 +1,1 @@
+Bookmark list updates in real-time without page refresh. If you open two tabs and add a bookmark in one, it should appear in the other instantly. Use Supabase Realtime subscriptions.

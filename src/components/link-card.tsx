@@ -9,7 +9,6 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import BookmarkForm from "@/components/bookmark-form";
@@ -31,7 +30,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { publishBookmarksSync } from "@/lib/bookmarks-sync";
 import { deleteBookmark } from "@/lib/supabase/query";
 import { URLIcon } from "@/lib/url-utils";
 import type { BookmarkRow, TagRow } from "@/types";
@@ -66,7 +64,6 @@ export default function LinkCard({
   bookmark,
   availableTags = [],
 }: LinkCardProps) {
-  const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [iconAttempt, setIconAttempt] = useState<"origin" | "google" | "fallback">(
     "origin"
@@ -104,9 +101,7 @@ export default function LinkCard({
       return;
     }
 
-    publishBookmarksSync();
     toast.success("Bookmark deleted.");
-    router.refresh();
   };
 
   return (

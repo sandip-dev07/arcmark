@@ -46,9 +46,7 @@ import {
   deleteTag,
   updateBookmark,
 } from "@/lib/supabase/query";
-import { publishBookmarksSync } from "@/lib/bookmarks-sync";
 import { normalizeTag } from "@/lib/normalize-tag";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { BookmarkRow, TagRow } from "@/types";
 
@@ -94,7 +92,6 @@ export default function BookmarkForm({
   bookmark,
   trigger,
 }: BookmarkFormProps) {
-  const router = useRouter();
   const clampedBookmarkTags =
     bookmark?.tags.slice(0, MAX_TAGS_PER_BOOKMARK) ?? [];
   const bookmarkTagKey = clampedBookmarkTags.join("|");
@@ -300,9 +297,7 @@ export default function BookmarkForm({
       current.filter((tag) => tag !== tagToDelete.name)
     );
     setErrors((current) => ({ ...current, tags: undefined }));
-    publishBookmarksSync();
     toast.success(`Deleted tag "${tagToDelete.name}".`);
-    router.refresh();
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -329,10 +324,8 @@ export default function BookmarkForm({
       toast.success(
         isEditing ? "Bookmark updated successfully." : "Bookmark saved successfully."
       );
-      publishBookmarksSync();
       resetForm();
       setOpen(false);
-      router.refresh();
     } finally {
       setSubmitting(false);
     }

@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
@@ -225,8 +224,6 @@ export const createBookmark = async (input: CreateBookmarkInput) => {
     }
   }
 
-  revalidatePath("/bookmarks");
-
   return {
     ok: true as const,
     data: {
@@ -372,8 +369,6 @@ export const updateBookmark = async (
     return syncResult;
   }
 
-  revalidatePath("/bookmarks");
-
   return {
     ok: true as const,
     data: {
@@ -417,8 +412,6 @@ export const deleteBookmark = async (bookmarkId: string) => {
     };
   }
 
-  revalidatePath("/bookmarks");
-
   return { ok: true as const };
 };
 
@@ -455,8 +448,6 @@ export const deleteTag = async (tagId: string) => {
       error: error.message,
     };
   }
-
-  revalidatePath("/bookmarks");
 
   return { ok: true as const };
 };

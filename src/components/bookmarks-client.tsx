@@ -6,7 +6,6 @@ import BookmarkForm from "@/components/bookmark-form";
 import LinkCard from "@/components/link-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { bookmarksSyncConfig } from "@/lib/bookmarks-sync";
 import { createClient } from "@/lib/supabase/client";
 import type { BookmarkRow, TagRow } from "@/types";
 
@@ -155,24 +154,6 @@ export default function BookmarksClient({
       }, 150);
     };
 
-    const broadcastChannel =
-      typeof BroadcastChannel !== "undefined"
-        ? new BroadcastChannel(bookmarksSyncConfig.channel)
-        : null;
-
-    const onBroadcastMessage = () => scheduleRefresh();
-    const onStorage = (event: StorageEvent) => {
-      if (
-        event.key === bookmarksSyncConfig.storageKey &&
-        event.newValue?.startsWith(bookmarksSyncConfig.event)
-      ) {
-        scheduleRefresh();
-      }
-    };
-
-    broadcastChannel?.addEventListener("message", onBroadcastMessage);
-    window.addEventListener("storage", onStorage);
-
     const channel = supabase
       .channel(`bookmarks-sync:${userId}`)
       .on(
@@ -197,8 +178,6 @@ export default function BookmarksClient({
         window.clearTimeout(refreshTimeoutRef.current);
       }
 
-      broadcastChannel?.close();
-      window.removeEventListener("storage", onStorage);
       void supabase.removeChannel(channel);
     };
   }, [supabase, userId]);
