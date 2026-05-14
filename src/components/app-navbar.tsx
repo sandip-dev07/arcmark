@@ -23,7 +23,7 @@ export default async function AppNavbar() {
   return (
     <nav className="w-full border-b border-border/70 h-14 sm:h-16 flex items-center">
       <div className="max-w-container flex items-center justify-between gap-3">
-        <AppLogo href="/bookmarks" />
+        <AppLogo href="/" />
         {user?.email ? (
           <UserProfileMenu
             email={user.email}
